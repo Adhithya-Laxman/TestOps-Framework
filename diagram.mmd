@@ -1,0 +1,31 @@
+sequenceDiagram
+    participant User as User
+    participant UI as UI (Flask App)
+    participant DB as Firestore Database
+    participant Selenium as Selenium WebDriver
+    User->>UI: Create Project for Application
+    UI->>DB: Store Project Metadata (name, proj_url)
+    User->>UI: Upload Action Script
+    UI->>DB: Store Action Metadata (name, parameters)
+    UI->>UI: Save Script File to Actions Directory
+    User->>UI: Create Test Case for Project
+    UI->>DB: Store Test Case Metadata (name, proj_id)
+    User->>UI: Add Action to Test Case
+    UI->>DB: Update Test Case with Action ID and Parameters
+    User->>UI: Run Test Case
+    UI->>DB: Retrieve Project URL from Project Metadata
+    DB->>UI: Return Project URL
+    UI->>Selenium: Initialize WebDriver
+    Selenium->>UI: Return WebDriver Instance
+    UI->>Selenium: Navigate to Project URL
+    loop For Each Action in Test Case
+        UI->>DB: Retrieve Action Metadata (script_file, parameters)
+        DB->>UI: Return Action Metadata
+        UI->>UI: Load Action Script from File
+        UI->>Selenium: Execute Action Function with Parameters
+        Selenium->>UI: Return Action Result
+        UI->>UI: Collect Results
+    end
+    UI->>Selenium: Close WebDriver
+    UI->>UI: Compile Test Case Results
+    UI->>User: Display Test Case Results
