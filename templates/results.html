@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ testcase_name }} - Test Case Results</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+    />
+    <style>
+      .stage {
+        transition: all 0.3s ease;
+      }
+      .step-details {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease-out;
+      }
+      .step-details.open {
+        max-height: 200px;
+      }
+      .timeline {
+        display: flex;
+        align-items: center;
+        position: relative;
+      }
+      .timeline::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: #e5e7eb;
+        top: 50%;
+        z-index: 0;
+      }
+      .stage-dot {
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        z-index: 1;
+        margin: 0 8px;
+      }
+    </style>
+  </head>
+  <body class="bg-gray-700 font-sans">
+    <div
+      class="bg-gray-800 px-6 py-4 shadow-md ring-gray-800 flex items-center"
+    >
+      <a
+        href="/dashboard/{{ proj_id }}/{{ testcase_id }}"
+        class="material-symbols-outlined text-lime-300 cursor-pointer"
+        >arrow_back</a
+      >
+      <h1 class="text-white text-2xl font-bold ml-4">
+        Test Case Results - {{ testcase_name }}
+      </h1>
+    </div>
+    <div class="container mx-auto p-4">
+      <div id="timeline" class="timeline my-6 flex justify-evenly"></div>
+      <div id="result-container" class="space-y-4"></div>
+      <div
+        id="status"
+        class="text-center mt-4 text-lg font-semibold text-white"
+      ></div>
+    </div>
+
+    <script>
+      const testcaseId = "{{ testcase_id }}";
+      const resultContainer = document.getElementById("result-container");
+      const timeline = document.getElementById("timeline");
+      const statusDiv = document.getElementById("status");
+      let completedActions = new Set();
+
+      function fetchResults() {
+        fetch(`/past-results/${testcaseId}`)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error(
+                `Network response was not ok: ${response.status}`
+              );
+            }
+            return response.json();
+          })
+          .then((data) => {
+            if (data.length === 0) {
+              statusDiv.textContent = "No test runs found.";
+              return;
+            }
+            const latestRun = data[0]; // Newest run
+
+            if (latestRun.status === "running") {
+              statusDiv.textContent = "Test case is running...";
+              renderRunning(latestRun.results || []);
+            } else {
+              statusDiv.textContent = `Overall Status: ${latestRun.status.toUpperCase()}`;
+              statusDiv.className = `text-center mt-4 text-lg font-semibold ${
+                latestRun.status === "passed" ? "text-lime-300" : "text-red-500"
+              }`;
+              renderFinalResults(latestRun.results || [], latestRun.status);
+              return; // Stop polling once complete
+            }
+            setTimeout(fetchResults, 1000);
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            statusDiv.textContent = "Error fetching results: " + error.message;
+            statusDiv.className = "text-center text-red-500";
+          });
+      }
+      function renderRunning(results) {
+        // Use index to create unique IDs for each instance
+        results.forEach((result, index) => {
+          const uniqueId = `${result.action_id}-${index}`;
+          if (!document.getElementById(`stage-${uniqueId}`)) {
+            const dot = document.createElement("div");
+            dot.className = `stage-dot bg-blue-500`;
+            dot.id = `dot-${uniqueId}`;
+            timeline.appendChild(dot);
+
+            const stage = document.createElement("div");
+            stage.id = `stage-${uniqueId}`;
+            stage.className = `stage p-4 rounded-lg shadow-md bg-blue-500 text-white`;
+            stage.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium">${
+                              result.name
+                            } (Instance ${index + 1})</span>
+                            <button class="toggle-details text-sm underline" data-id="${uniqueId}">Details</button>
+                        </div>
+                        <div class="step-details" id="details-${uniqueId}">
+                            <p class="mt-2 text-sm">${JSON.stringify(
+                              result.details
+                            ).replace(/"/g, "")}</p>
+                        </div>
+                    `;
+            resultContainer.appendChild(stage);
+
+            const toggleButton = stage.querySelector(".toggle-details");
+            const details = stage.querySelector(".step-details");
+            toggleButton.addEventListener("click", () => {
+              details.classList.toggle("open");
+              toggleButton.textContent = details.classList.contains("open")
+                ? "Hide"
+                : "Details";
+            });
+          } else if (!completedActions.has(uniqueId) && result.status) {
+            const stage = document.getElementById(`stage-${uniqueId}`);
+            const dot = document.getElementById(`dot-${uniqueId}`);
+            stage.className = `stage p-4 rounded-lg shadow-md bg-yellow-500 text-white`;
+            dot.className = `stage-dot bg-yellow-500`;
+            completedActions.add(uniqueId);
+          }
+        });
+      }
+
+      function renderFinalResults(results, overallStatus) {
+        results.forEach((result, index) => {
+          const uniqueId = `${result.action_id}-${index}`;
+          const stage = document.getElementById(`stage-${uniqueId}`);
+          const dot = document.getElementById(`dot-${uniqueId}`);
+          if (stage && dot) {
+            const finalClass =
+              overallStatus === "passed" ? "bg-green-500" : "bg-red-500";
+            stage.className = `stage p-4 rounded-lg shadow-md ${finalClass} text-white`;
+            dot.className = `stage-dot ${finalClass}`;
+            stage.innerHTML = `
+                        <div class="flex justify-between items-center">
+                            <span class="font-medium">${
+                              result.name
+                            } (Instance ${index + 1})</span>
+                            <button class="toggle-details text-sm underline" data-id="${uniqueId}">Details</button>
+                        </div>
+                        <div class="step-details" id="details-${uniqueId}">
+                            <p class="mt-2 text-sm">${JSON.stringify(
+                              result.details
+                            ).replace(/"/g, "")}</p>
+                        </div>
+                    `;
+
+            const toggleButton = stage.querySelector(".toggle-details");
+            const details = stage.querySelector(".step-details");
+            toggleButton.addEventListener("click", () => {
+              details.classList.toggle("open");
+              toggleButton.textContent = details.classList.contains("open")
+                ? "Hide"
+                : "Details";
+            });
+          }
+        });
+      }
+
+      window.onload = fetchResults;
+    </script>
+  </body>
+</html>

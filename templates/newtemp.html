@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ testcase_name }} - Test Case Details</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        .dot {
+            height: 50px;
+            width: 50px;
+            border-radius: 50%;
+        }
+        div > ::-webkit-scrollbar {
+            width: 10px;
+        }
+        div > ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 5px;
+        }
+        div > ::-webkit-scrollbar-track {
+            background: #364153;
+        }
+    </style>
+</head>
+<body class="bg-gray-700">
+    <div class="bg-gray-800 px-6 py-4 relative shadow-md ring-gray-800 flex">
+        <a href="/dashboard/{{ proj_id }}" class="material-symbols-outlined text-lime-300 cursor-pointer">arrow_back</a>
+        <h3 class="text-white mt-5 text-lg font-medium tracking-tight text-center w-screen pb-4">
+            Testops Dashboard - {{ testcase_name }}
+        </h3>
+    </div>
+
+    <div class="flex flex-col gap-y-10 mx-10">
+        <!-- Test Case Details -->
+        <div class="px-8 py-8">
+            <p class="text-white text-3xl font-semibold mb-4">{{ testcase_name }}</p>
+            <p class="text-gray-400 text-lg mb-4">Project URL: <a href="{{ proj_url }}" class="text-lime-300 hover:text-lime-500">{{ proj_url }}</a></p>
+            <button onclick="runTestCase()" class="cursor-pointer outline-none focus:outline-none border text-xl transition-all py-3 px-6 rounded-md text-lime-300 hover:text-gray-900 hover:bg-lime-300">
+                Run Test Case
+                <span class="material-symbols-outlined px-2">play_arrow</span>
+            </button>
+            <div id="run-message" class="text-center mt-4"></div>
+        </div>
+
+        <!-- Current Actions -->
+        <div class="px-8 py-8">
+            <p class="text-white text-2xl font-semibold mb-4">Current Actions</p>
+            <ul id="actions-list" class="space-y-4">
+                {% for action in actions %}
+                <li class="bg-gray-800 p-4 rounded-md flex justify-between items-center">
+                    <span>
+                        <a href="/dashboard/{{ proj_id }}/{{ testcase_id }}/{{ action.action_id }}" class="text-lime-300 hover:text-lime-500">Action ID: {{ action.action_id }}</a><br>
+                        Parameters: {{ action.parameters | tojson }}
+                    </span>
+                    <button onclick="removeAction('{{ action.action_id }}')" class="text-red-500 hover:text-red-700">
+                        <span class="material-symbols-outlined">delete</span>
+                    </button>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <!-- Add Action -->
+        <div class="px-8 py-8 flex flex-row justify-center">
+            <div class="dot bg-lime-300 shadow-md text-center font-bold text-lg text-gray-700 flex justify-center items-center">
+                +
+            </div>
+            <div class="w-full md:w-2/3 px-20">
+                <p class="block tracking-wide text-gray-400 text-sm font-bold mb-4">Add Action to Test Case</p>
+                <select id="action-select" class="appearance-none block w-full bg-gray-100 text-gray-700 border border-gray-200 rounded-md py-3 px-4 mb-4 leading-tight focus:outline-none focus:bg-white focus:border-gray-500">
+                    <option value="">Select an action</option>
+                    {% for action in available_actions %}
+                    <option value="{{ action.id }}" data-parameters="{{ action.parameters | tojson }}">{{ action.name }}</option>
+                    {% endfor %}
+                </select>
+                <div id="parameters-form" class="mb-4"></div>
+                <div class="flex gap-4">
+                    <button onclick="addAction()" class="cursor-pointer outline-none focus:outline-none border text-xl transition-all py-3 px-6 rounded-md text-lime-300 hover:text-gray-900 hover:bg-lime-300">
+                        Add Selected Action
+                        <span class="material-symbols-outlined px-2">add</span>
+                    </button>
+                    <a href="/newaction/?proj_id={{ proj_id }}&testcase_id={{ testcase_id }}" class="cursor-pointer outline-none focus:outline-none border text-xl transition-all py-3 px-6 rounded-md text-lime-300 hover:text-gray-900 hover:bg-lime-300">
+                        Create New Action
+                        <span class="material-symbols-outlined px-2">upload</span>
+                    </a>
+                </div>
+                <div id="action-message" class="text-center mt-4"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function addAction() {
+            const actionSelect = document.getElementById('action-select');
+            const actionId = actionSelect.value;
+            const messageDiv = document.getElementById('action-message');
+
+            if (!actionId) {
+                messageDiv.textContent = 'Please select an action.';
+                messageDiv.className = 'text-center text-red-500';
+                return;
+            }
+
+            const selectedOption = actionSelect.selectedOptions[0];
+            const paramStr = selectedOption.dataset.parameters || '{}';
+            console.log('Parameters for addAction:', paramStr); // Debug log
+
+            let paramDefs;
+            try {
+                paramDefs = JSON.parse(paramStr);
+                if (typeof paramDefs !== 'object' || paramDefs === null) {
+                    throw new Error('Parsed parameters is not an object');
+                }
+            } catch (e) {
+                console.error('Invalid JSON in addAction:', paramStr, e);
+                messageDiv.textContent = 'Invalid action parameters.';
+                messageDiv.className = 'text-center text-red-500';
+                return;
+            }
+
+            const parameters = {};
+            for (const param in paramDefs) {
+                const input = document.getElementById(`param-${param}`);
+                if (!input || !input.value) {
+                    messageDiv.textContent = `Please provide a value for ${param}.`;
+                    messageDiv.className = 'text-center text-red-500';
+                    return;
+                }
+                parameters[param] = input.value;
+            }
+
+            fetch('/dashboard/{{ proj_id }}/{{ testcase_id }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'add_action', action_id: actionId, parameters })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    messageDiv.textContent = `Error: ${data.error}`;
+                    messageDiv.className = 'text-center text-red-500';
+                } else {
+                    messageDiv.textContent = 'Action added successfully';
+                    messageDiv.className = 'text-center text-lime-300';
+                    setTimeout(() => location.reload(), 1000);
+                }
+            })
+            .catch(err => {
+                messageDiv.textContent = `Error: ${err.message}`;
+                messageDiv.className = 'text-center text-red-500';
+            });
+        }
+
+        document.getElementById('action-select').addEventListener('change', function() {
+            const parametersForm = document.getElementById('parameters-form');
+            parametersForm.innerHTML = '';
+            const actionId = this.value;
+            if (actionId) {
+                const selectedOption = this.selectedOptions[0];
+                const paramStr = selectedOption.dataset.parameters || '{}';
+                console.log('Parameters for event listener:', paramStr); // Debug log
+
+                let parameters;
+                try {
+                    parameters = JSON.parse(paramStr);
+                    if (typeof parameters !== 'object' || parameters === null) {
+                        throw new Error('Parsed parameters is not an object');
+                    }
+                } catch (e) {
+                    console.error('Invalid JSON in event listener:', paramStr, e);
+                    parametersForm.innerHTML = '<p class="text-red-500">Error: Invalid parameters format</p>';
+                    return;
+                }
+
+                for (const param in parameters) {
+                    const label = document.createElement('label');
+                    label.textContent = `${param} (${parameters[param].__name__ || parameters[param]})`;
+                    label.className = 'block tracking-wide text-gray-400 text-sm font-bold mt-4 mb-2';
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.id = `param-${param}`;
+                    input.className = 'appearance-none block w-full bg-gray-100 text-gray-700 border border-gray-200 rounded-md py-3 px-4 leading-tight focus:outline-none focus:bg-white focus:border-gray-500';
+                    input.placeholder = `Enter ${param}`;
+                    parametersForm.appendChild(label);
+                    parametersForm.appendChild(input);
+                }
+            }
+        });
+
+        // Placeholder for other functions (assuming they exist elsewhere)
+        function removeAction(actionId) {
+            // Implementation assumed to be unchanged
+        }
+
+        function runTestCase() {
+            // Implementation assumed to be unchanged
+        }
+    </script>
+</body>
+</html>
